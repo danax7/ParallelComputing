@@ -1,0 +1,102 @@
+#include <iostream>
+#include "lodepng.cpp"
+#include <chrono>
+#include <algorithm>
+#include <omp.h>
+#include <immintrin.h>
+#include <emmintrin.h>
+#pragma GCC optimize("03")
+using namespace std;
+
+
+unsigned char* ReadImage(const char* filename, unsigned int& width, unsigned int& height) {
+    unsigned char* image = 0;
+    unsigned error = lodepng_decode32_file(&image, &width, &height, filename);
+    if (error) {
+        cout << "decoder error " << error << ": " << lodepng_error_text(error) << endl;
+    }
+    return image;
+}
+
+void WriteImage(const char* filename, unsigned char* image, unsigned int width, unsigned int height) {
+    unsigned error = lodepng_encode32_file(filename, image, width, height);
+    if (error) {
+        cout << "encoder error " << error << ": " << lodepng_error_text(error) << endl;
+    }
+}
+
+void negative(unsigned char* image, unsigned int width, unsigned int height) {
+#pragma omp parallel for
+    for (int i = 0; i < width * height * 4; i += 4) {
+        image[i] = 255 - image[i];
+        image[i + 1] = 255 - image[i + 1];
+        image[i + 2] = 255 - image[i + 2];
+    }
+}
+
+void negativeVectorization(unsigned char* image, unsigned int width, unsigned int height) {
+    std::vector<unsigned char> alpha;
+    for (int i = 3; i < width * height * 4; i += 4) {
+        alpha.push_back(image[i]);
+    }
+
+    __m128i* p = (__m128i*)image;
+    __m128i mask = _mm_set1_epi8(255);
+
+    for (int i = 0; i < width * height*4; i += 16) {
+        __m128i px = _mm_load_si128(p + i / 16);
+        __m128i sub = _mm_sub_epi8(mask, px);
+        _mm_store_si128(p + i / 16, sub);
+    }
+
+    for (int i = 3; i < width * height * 4; i += 4) {
+        image[i] = alpha[(i - 3) / 4];
+    }
+}
+
+void median(unsigned char* image, unsigned int width, unsigned int height) {
+    int size = 15;
+    int size2 = size * size;
+    vector<unsigned char> imageCopy(image, image + width * height * 4);
+#pragma omp parallel for
+    for (int i = 0; i < width * height * 4; i += 4) {
+        vector<unsigned char> red;
+        vector<unsigned char> green;
+        vector<unsigned char> blue;
+        for (int j = 0; j < size2; j++) {
+            int x = i + (j % size - size / 2) * 4 + (j / size - size / 2) * width * 4;
+            if (x >= 0 && x < width * height * 4) {
+                red.push_back(imageCopy[x]);
+                green.push_back(imageCopy[x + 1]);
+                blue.push_back(imageCopy[x + 2]);
+            }
+        }
+
+        std::sort(red.begin(), red.end());
+        std::sort(green.begin(), green.end());
+        std::sort(blue.begin(), blue.end());
+
+        image[i] = red[size2 / 2];
+        image[i + 1] = green[size2 / 2];
+        image[i + 2] = blue[size2 / 2];
+    }
+}
+
+int main() {
+    
+    unsigned int width, height;
+    unsigned char* image = ReadImage("./inputImages/600x600.png", width, height);
+
+    auto start = chrono::high_resolution_clock::now();
+
+    //negative(image, width, height);
+    negativeVectorization(image,width,height);
+    //median(image, width, height);
+
+    WriteImage("./outputImages/negativeVect600.png", image, width, height);
+
+    auto end = chrono::high_resolution_clock::now();
+    auto duration = chrono::duration_cast<chrono::milliseconds>(end - start);
+    std::cout << "Time taken: " << duration.count() << " milliseconds" << std::endl;
+
+}
