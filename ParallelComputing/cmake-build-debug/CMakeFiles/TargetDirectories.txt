@@ -1,0 +1,3 @@
+C:/Users/DANAX/CLionProjects/ParallelComputing/cmake-build-debug/CMakeFiles/ParallelComputing.dir
+C:/Users/DANAX/CLionProjects/ParallelComputing/cmake-build-debug/CMakeFiles/edit_cache.dir
+C:/Users/DANAX/CLionProjects/ParallelComputing/cmake-build-debug/CMakeFiles/rebuild_cache.dir
